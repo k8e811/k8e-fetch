@@ -1,0 +1,9 @@
+---
+services:
+  fetch:
+    image: ${DOCKER_FETCH_REGISTRY:-k8e}/${DOCKER_FETCH_REPO:-k8e-fetch}:${DOCKER_FETCH_TAG:-0.0.1}
+    build:
+      context: .
+      args:
+        DOCKER_DEBIAN_TAG: bookworm-slim
+
