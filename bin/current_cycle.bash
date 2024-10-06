@@ -38,6 +38,18 @@ MkFilter() {
 		echo "Elections/$y"
 	done
 }
+Sync() {
+	local bucket i include=() filters=()
+	for bucket in "$@"; do
+		mkdir -p "$bucket"
+		readarray -t include < "$bucket.fetch"
+		filters=(--exclude '*')
+		for i in "${include[@]}"; do
+			filters+=(--include "$i")
+		done
+		aws s3 sync --no-sign-request --only-show-errors "${filters[@]}" "s3://$bucket" "fetch/$bucket"
+	done
+}
 Main "$@"
 # shellcheck disable=SC2317
 exit 1
