@@ -1,0 +1,2 @@
+#!/bin/bash 
+exec sed -e '1s/ /_/g' -e '1s/\(.*)\)/\L\1/'
