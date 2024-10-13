@@ -1,0 +1,8 @@
+fetch:
+  current_cycle:
+    dl.ncsbe.gov:
+      include:
+        - '_Statewide\.zip$'
+        - 'layout.*txt'
+        # - 'Snapshots/VR_Snapshot_::YEARS::'
+        # - 'Elections/::YEAR::'
