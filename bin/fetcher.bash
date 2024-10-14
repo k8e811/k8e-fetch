@@ -8,19 +8,20 @@ datadir="${FETCHER_DATADIR:-${opwd}}"
 versionsdir="${FETCHER_VERSIONSDIR:-${datadir}/versions}"
 syncdir="${FETCHER_SYNCDIR:-${datadir}/sync}"
 flatdir="${FETCHER_FLATDIR:-${datadir}/flat}"
+dbdir="${FETCHER_DBDIR:-${datadir}/db}"
 Main() {
     : "${OPATH:=$PATH}"
     PATH="$zerodir:$PATH"
     local group="${1:-current_cycle}"
     local buckets=()
     readarray -t buckets < <(yq -r ".fetch.$group | keys().[]" < "$cfg")
-    FetchVersions "$versionsdir" "${buckets[@]}"
-    Sync "$syncdir" "$versionsdir" "$group"
-    SqlLoad "$syncdir" "$versionsdir" "$group" "$flatdir"
+    FetchVersions "${buckets[@]}"
+    Sync "$group"
+    SqlLoad "$group"
     exit 0
 }
 FetchVersions() {
-    local vfile bucket vdir="$1"; shift
+    local vfile bucket vdir="$versionsdir"
     mkdir -pv "$vdir"
     echo '*' > "$vdir/.gitignore"
     echo "FetchVersions: $vdir," "$@" 1>&2
@@ -31,7 +32,8 @@ FetchVersions() {
     done
 }
 Sync() {
-    local sdir="$1" vdir="$2" group="$3"; shift; shift; shift
+    local group="$1"; shift
+    local sdir="$syncdir" vdir="$versionsdir" 
     mkdir -p "$sdir"
     echo '*' > "$sdir/.gitignore"
     echo "Sync: $sdir $vdir $group" 1>&2
@@ -52,11 +54,14 @@ Include() {
     jq -r '.Versions[].Key' "$bucketfile" | grep -E -f <(yq -r ".fetch.\"$group\".\"$bucket\".include[]" "$cfg") | grep -v '/$' | uniq
 }
 SqlLoad() {
-    local sdir="$1" vdir="$2" group="$3" fdir="$4"
+    local group="$1"; shift
+    local sdir="$syncdir" vdir="$versionsdir" fdir="$flatdir"
     local bucketfile bucket include=() i fbdir sbdir
     echo "SqlLoad: $sdir $vdir $group $fdir" 1>&2
     mkdir -p "$fdir"
     echo "*" > "$fdir/.gitignore"
+    mkdir -p "$dbdir"
+    echo "*" > "$dbdir/.gitignore"
     if [ -n "${FETCHER_SKIP_LOAD:-}" ]; then return 0; fi
     local cmds=(".echo on") item_cmds=()
     for bucketfile in "$vdir"/*.json; do
@@ -74,9 +79,11 @@ SqlLoad() {
             cmds+=("${item_cmds[@]}")
         done
     done
-    for i in "${cmds[@]}"; do echo "$i"; done > "$group.load.sql"
-    rm -f "$group.load.sqlite" || :
-    sqlite3 "$group.load.sqlite" -init "$group.load.sql" ".exit"
+    local dbload="$dbdir/$group.load.sql"
+    for i in "${cmds[@]}"; do echo "$i"; done > "$dbload"
+    local db="$dbdir/$group.load.sqlite"
+    rm -f "$db" || :
+    sqlite3 "$db" -init "$dbload" ".exit"
 }
 ItemCmds() {
     local mode=tabs encoding='LATIN1' base qq t1 table zip
