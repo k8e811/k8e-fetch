@@ -18,6 +18,7 @@ Main() {
     FetchVersions "${buckets[@]}"
     Sync "$group"
     SqlLoad "$group"
+    Compress "$group"
     exit 0
 }
 FetchVersions() {
@@ -99,10 +100,10 @@ ItemCmds() {
 			qq="quotequote"
 			;;
 		VR_Snapshot_*.zip)
-			encoding=UTF-16
 			qq="quotequote"
 			case "${base##*_}" in
-				2005*|2006*|2007*) encoding=LATIN1 ;;
+				2005*|2006*|2007*) : ;;
+                *) encoding=UTF-16 ;;
 			esac
 			;;
 		ncvoter_Statewide.zip|ncvhis_Statewide.zip)
@@ -114,6 +115,51 @@ ItemCmds() {
 	esac
 	echo ".mode $mode"
 	echo ".import \"| $zip | iconv -f $encoding -t UTF-8 - | $qq\" $table"
+}
+Compress() {
+    local group="$1"; 
+    local db="$dbdir/$group.load.sqlite"
+    local tables="$dbdir/$group.load.tables"
+    echo "Compress: $group" 1>&2
+    sqlite3 "$db" "SELECT name FROM sqlite_schema WHERE type='table' and name NOT LIKE 'sqlite_%';" > "$tables"
+    local compressors=() c
+    readarray -t compressors < <(yq -r ".compress | keys().[]" < "$cfg")
+    rm -f "$tables".* || :
+    for c in "${compressors[@]}"; do
+        grep -E -f <(yq -r ".compress.$c.include[]" "$cfg") "$tables" > "$tables.$c"
+        CompressComponents "$db" "$c" "$tables"
+    done
+}
+CompressComponents() {
+    local db="$1"; shift
+    local compressor="$1"; shift
+    local tables="$1"; shift
+    echo "CompressComponents: $db, $compressor, $tables" 1>&2
+    local components=() component columns=() c_tables=() table q_columns s_columns=() qs_columns
+    readarray -t c_tables < "$tables.$compressor"
+    set -x
+    readarray -t components < <(yq -r ".compress.$compressor.components | keys().[]" "$cfg")
+    echo "CompressComponents: ${components[*]}" 1>&2
+    for component in "${components[@]}"; do
+        readarray -t columns < <(yq -r ".components.$component.[]" "$cfg")
+        readarray -t s_columns < <(SourceColumns "$compressor" "$component" "${columns[@]}")
+        echo "CompressComponents: $component, ${columns[*]}" 1>&2
+        readarray -t c_tables < "$tables.$compressor"
+        IFS=, q_columns="${columns[*]}"
+        IFS=, qs_columns="${s_columns[*]}"
+        for table in "${c_tables[@]}"; do
+            sqlite3 "$db" -batch -echo "CREATE TABLE IF NOT EXISTS $component AS SELECT $qs_columns FROM $table LIMIT 0;"
+            sqlite3 "$db" -batch -echo "INSERT OR IGNORE INTO $component SELECT DISTINCT $qs_columns FROM $table;"
+            sqlite3 "$db" -batch -echo "CREATE UNIQUE INDEX IF NOT EXISTS u_$component ON $component($q_columns);"
+        done
+    done
+}
+SourceColumns() {
+    local compressor="$1"; shift
+    local component="$1"; shift
+    for c in "$@"; do
+        echo "$(yq -r ".compress.$compressor.components.$component.subst.$c // \"$c\"" "$cfg") as $c"
+    done
 }
 Main "$@"
 # shellcheck disable=SC2317
