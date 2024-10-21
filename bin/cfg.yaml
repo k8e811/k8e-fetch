@@ -2,10 +2,10 @@ fetch:
   current_cycle:
     dl.ncsbe.gov:
       include:
-        - 'Snapshots/VR_Snapshot_202'
+        - 'Snapshots/VR_Snapshot_20240514\.zip$'
         - '_Statewide\.zip$'
-        - 'layout.*txt'
-        - 'Elections/2024'
+        - 'layout.*txt$'
+        - 'Elections/'
 compress:
   a_vr_snapshot:
     include:
@@ -18,9 +18,6 @@ compress:
           middle_name: midl_name
           name_suffix_lbl: name_sufx_cd
       c_residence:
-      # c_residence_ncvoter:
-      #   subst:
-      #     res_street_address: concat_ws(' ',house_num||half_code,ltrim(street_dir),street_name,ltrim(street_type_cd),ltrim(street_sufx_cd))
       c_mail:
       c_phone:
       c_phone_ncv:
