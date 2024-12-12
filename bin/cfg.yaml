@@ -6,6 +6,8 @@ fetch:
         - '_Statewide\.zip$'
         - 'layout.*txt$'
         - 'Elections/'
+      
+# Not used
 compress:
   a_vr_snapshot:
     include:
