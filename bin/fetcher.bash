@@ -9,16 +9,17 @@ versionsdir="${FETCHER_VERSIONSDIR:-${datadir}/versions}"
 syncdir="${FETCHER_SYNCDIR:-${datadir}/sync}"
 flatdir="${FETCHER_FLATDIR:-${datadir}/flat}"
 dbdir="${FETCHER_DBDIR:-${datadir}/db}"
+FETCHER_SKIP_COMPRESS=true
 Main() {
     : "${OPATH:=$PATH}"
     PATH="$zerodir:$PATH"
     local group="${1:-current_cycle}"
     local buckets=()
     readarray -t buckets < <(yq -r ".fetch.$group | keys().[]" < "$cfg")
-    FetchVersions "${buckets[@]}"
-    Sync "$group"
-    SqlLoad "$group"
-    Compress "$group"
+    time FetchVersions "${buckets[@]}"
+    time Sync "$group"
+    time SqlLoad "$group"
+    time Compress "$group"
     exit 0
 }
 FetchVersions() {
@@ -87,17 +88,19 @@ SqlLoad() {
     sqlite3 "$db" -init "$dbload" ".exit"
 }
 ItemCmds() {
-    local mode=tabs encoding='LATIN1' base qq t1 table zip
+    local mode=tabs encoding='LATIN1' base qq t1 table zip email
 	base="${1##*/}"
 	t1="${base%%.*}"
 	table="${t1,,}"
 	qq="header_fix"
 	zip="unzip -p '$1'"
+    email=''
 	case "$base" in
 		Candidate_Listing_*.csv)
 			zip="cat '$1'"
 			mode=csv
 			qq="quotequote"
+            email="ALTER TABLE $table ADD COLUMN \"email\" TEXT;"
 			;;
 		VR_Snapshot_*.zip)
 			qq="quotequote"
@@ -115,8 +118,11 @@ ItemCmds() {
 	esac
 	echo ".mode $mode"
 	echo ".import \"| $zip | iconv -f $encoding -t UTF-8 - | $qq\" $table"
+    if [ -n "$email" ]; then echo "$email"; fi
 }
+
 Compress() {
+    if [ -n "${FETCHER_SKIP_COMPRESS:-}" ]; then return 0; fi
     local group="$1"; 
     local db="$dbdir/$group.load.sqlite"
     local tables="$dbdir/$group.load.tables"
@@ -149,8 +155,8 @@ CompressComponents() {
         IFS=, qs_columns="${s_columns[*]}"
         for table in "${c_tables[@]}"; do
             sqlite3 "$db" -batch -echo "CREATE TABLE IF NOT EXISTS $component AS SELECT $qs_columns FROM $table LIMIT 0;"
-            sqlite3 "$db" -batch -echo "INSERT OR IGNORE INTO $component SELECT DISTINCT $qs_columns FROM $table;"
             sqlite3 "$db" -batch -echo "CREATE UNIQUE INDEX IF NOT EXISTS u_$component ON $component($q_columns);"
+            sqlite3 "$db" -batch -echo "INSERT OR IGNORE INTO $component SELECT DISTINCT $qs_columns FROM $table;"
         done
     done
 }
